@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Package configurations
+REPO_PRIMARY="/var/www/html/trident"
+REPO_ARCH="amd64"
+REPO_PAC_ID="binary"
+REPO_FULL="${REPO_PRIMARY}/${REPO_ARCH}/${REPO_PAC_ID}"
+REPO_FILE="/etc/apt/sources.list.d/trident.list"
+
+REPO_IP="127.0.0.1"
+
+# Colors
+gs="\033[32m"
+rs="\033[31m"
+ys="\033[33m"
+ws="\033[37m"
+bs="\033[34m"
+ce="\033[0m"
+
+# Patterns
+plus="${gs}[+]${ce} "
+minus="${rs}[-]${ce} "
+astk="${bs}[*]${ce} "
+
+# Check if user is in root
+if [ "$(id -u)" != "0" ]; then
+    echo -e "\n${minus}${ws}Please run me as root...${ce}\n"
+    exit 1
+fi
+
+# ********************************************************************************************************************************************
+# Function to check the repo directory
+function check_repo() {
+    if [ -d ${REPO_PRIMARY} ]; then
+        echo -e "${astk}${gs}Primary repo directory \"${REPO_PRIMARY}\" exists...${ce}"
+        if [[ -d ${REPO_PRIMARY}/${REPO_ARCH} ]]; then
+            echo -e "${astk}${gs}Repository Arch directory \"${REPO_ARCH}\" exists...${ce}"
+            if [[ -d ${REPO_PRIMARY}/${REPO_ARCH}/${REPO_PAC_ID} ]]; then
+                echo -e "${astk}${gs}Package ID directory \"${REPO_PAC_ID}\" exists...${ce}"
+            else
+                echo -e "${minus}${gs}Package ID (src/binary) directory does not exist...${ce}"
+                exit 1
+            fi
+        else
+           echo -e "${minus}${gs}Repo arch (i386/amd64) does not exist...${ce}"
+           exit 1 
+        fi
+    else
+        echo -e "${minus}${gs}Primary repo sirectory does not exist...${ce}"
+        exit 1
+    fi
+}
+
+# Function to add the repository list file in /etc/apt/sources.list.d/trident.list
+function add_list_file() {
+    if [ -f ${REPO_FILE} ]; then
+        echo -e "${astk}${gs}Repository 'list' file exists: ${REPO_FILE}...${ce}"
+    else
+        echo -e "${astk}${gs}Creating repository file in /etc/apt/sources.list.d...${ce}"
+        touch ${REPO_FILE}
+        if [[ $? != "1" ]]; then
+            echo -e "${astk}${gs}Successfully created repository file...${ce}"
+        else
+            echo -e "${minus}${gs}Could not create repository file...${ce}"
+            exit 1
+        fi
+    fi
+}
+
+# Writes the repository URL ID to the list file
+function write_url_id() {
+    if [ "$(grep "[127.0.0.1,trident]" ${REPO_FILE})" ]; then
+        echo -e "${astk}${gs}Repository URL ID exists...${ce}"
+    else
+        echo -e "${astk}${gs}Writing repository URL ID to the list file...${ce}"
+        echo "deb [trusted=yes] http://${REPO_IP}/trident amd64/binary/" > ${REPO_FILE}
+        echo -e "${astk}${gs}Wrote repository URL ID to the list file...${ce}"
+    fi
+}
+
+# Function to generate the packages archive
+function generate_packages_archive() {
+    echo -e "${astk}${gs}Generating Packages.gz in ${REPO_FULL}...${ce}"
+    cd ${REPO_PRIMARY}
+    dpkg-scanpackages ${REPO_ARCH}/${REPO_PAC_ID} | gzip -9c > ${REPO_ARCH}/${REPO_PAC_ID}/Packages.gz
+    if [[ $? != "1" ]]; then
+        echo -e "${astk}${gs}Generated Packages.gz, updating system...${ce}"
+        apt update -qq
+        echo -e "\n${plus}${ws}All done, repository is ready for use...${ce}\n"
+        exit 0
+    else
+        echo -e "${minus}${gs}Could not generate Packages.gz, exiting...${ce}"
+        exit 1
+    fi
+}
+
+check_repo
+add_list_file
+write_url_id
+generate_packages_archive
+
